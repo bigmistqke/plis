@@ -4,11 +4,13 @@ export function tokenize(expression: string): string[] {
     .replace(/\(/g, " ( ")
     .replace(/\)/g, " ) ")
     .replace(/\,/g, " , ")
+    .replace(/\'/g, " ' ")
+    .replace(/\`/g, " ` ")
     .trim()
     .split(/\s+/)
 }
 
-export function parse(tokens: string[]) {
+export function parse(tokens: string[]): any {
   if (tokens.length === 0) {
     throw new SyntaxError("Unexpected EOF")
   }
@@ -27,6 +29,8 @@ export function parse(tokens: string[]) {
       return ["quote", parse(tokens)]
     case ",":
       return ["unquote", parse(tokens)]
+    case "`":
+      return ["quasiquote", parse(tokens)]
     default:
       return atom(token)
   }
@@ -53,78 +57,124 @@ export function standardEnvironment(): Environment {
   }
 }
 
+type Mode = "evaluate" | "quote" | "quasiquote"
+class ScopeStack<T> {
+  array = new Array<T>()
+  constructor(...values: T[]) {
+    this.array.push(...values)
+  }
+  get current() {
+    return this.array[this.array.length - 1]
+  }
+  scope<TValue>(mode: T, callback: () => TValue): TValue {
+    this.array.push(mode)
+    const result = callback()
+    this.array.pop()
+    return result
+  }
+}
+
 export function evaluate(
   expression: any,
   environment = standardEnvironment(),
 ): any {
-  if (typeof expression === "string") {
-    if (expression[0] === ",") {
-      return evaluate(expression.slice(1, -1), environment)
-    }
-    if (!(expression in environment)) {
-      console.error("Variable is undefined", expression)
-      throw `Variable ${expression} is undefined.`
-    }
-    return environment[expression]
-  } else if (typeof expression === "number") {
-    return expression
-  } else {
-    switch (expression[0]) {
-      case "quote": {
-        const [, list] = expression
-        return list
-      }
-      case "define": {
-        const [, varName, expr] = expression
-        environment[varName] = evaluate(expr, environment)
-        return
-      }
-      case "let":
-      case "let*": {
-        const [type, params, body] = expression
-        const scopedEnvironment = {
-          ...environment,
+  const mode = new ScopeStack<Mode>("evaluate")
+  function _evaluate(
+    expression: any,
+    environment = standardEnvironment(),
+  ): any {
+    switch (mode.current) {
+      case "evaluate": {
+        if (typeof expression === "string") {
+          if (expression[0] === ",") {
+            return _evaluate(expression.slice(1, -1), environment)
+          }
+          if (!(expression in environment)) {
+            console.error("Variable is undefined", expression)
+            throw `Variable ${expression} is undefined.`
+          }
+          return environment[expression]
         }
-        console.log("params", params)
-        params.forEach((param) => {
-          const [name, value] = param
-          scopedEnvironment[name] = evaluate(
-            value,
-            type === "let" ? environment : scopedEnvironment,
-          )
-        })
-        return evaluate(body, scopedEnvironment)
-      }
-      case "if": {
-        const [, conditional, success, fallthrough] = expression
-        if (evaluate(conditional, environment)) {
-          return evaluate(success, environment)
-        } else {
-          return evaluate(fallthrough, environment)
+        if (typeof expression === "number") {
+          return expression
+        }
+        const [keyword, ...rest] = expression
+        switch (keyword) {
+          case "define": {
+            const [varName, expr] = rest
+            environment[varName] = _evaluate(expr, environment)
+            return
+          }
+          case "fn": {
+            const [params, body] = rest
+            return (...args: any[]) => {
+              const localEnv: Environment = { ...environment }
+              params.forEach((param: string, index: number) => {
+                localEnv[param] = args[index]
+              })
+              return _evaluate(body, localEnv)
+            }
+          }
+          case "if": {
+            const [conditional, success, fallthrough] = rest
+            if (_evaluate(conditional, environment)) {
+              return _evaluate(success, environment)
+            } else {
+              return _evaluate(fallthrough, environment)
+            }
+          }
+          case "let":
+          case "let*": {
+            const [params, body] = rest
+            const scopedEnvironment = {
+              ...environment,
+            }
+            params.forEach((param) => {
+              const [name, value] = param
+              scopedEnvironment[name] = _evaluate(
+                value,
+                keyword === "let" ? environment : scopedEnvironment,
+              )
+            })
+            return _evaluate(body, scopedEnvironment)
+          }
+          case "unquote":
+          case "quasiquote":
+          case "quote": {
+            const [value] = rest
+            return mode.scope(keyword, () => _evaluate(value, environment))
+          }
+          default: {
+            const [...args] = rest
+            const proc = _evaluate(keyword, environment)
+            const evaluatedArgs = args.map((arg) => _evaluate(arg, environment))
+            if (typeof proc !== "function") {
+              console.error(`proc is not a function`, proc, expression)
+              return
+            }
+            return proc(...evaluatedArgs)
+          }
         }
       }
-      case "fn": {
-        const [, params, body] = expression
-        return (...args: any[]) => {
-          const localEnv: Environment = { ...environment }
-          params.forEach((param: string, index: number) => {
-            localEnv[param] = args[index]
+      case "quasiquote": {
+        if (Array.isArray(expression)) {
+          return expression.map((item) => {
+            if (Array.isArray(item) && item[0] === "unquote") {
+              return mode.scope("evaluate", () =>
+                _evaluate(item[1], environment),
+              )
+            } else {
+              return _evaluate(item, environment) // Recursively handle nested lists
+            }
           })
-          return evaluate(body, localEnv)
+        } else {
+          return expression
         }
       }
-
-      default: {
-        const [fn, ...args] = expression
-        const proc = evaluate(fn, environment)
-        const evaluatedArgs = args.map((arg) => evaluate(arg, environment))
-        if (typeof proc !== "function") {
-          console.error(`proc is not a function`, proc, expression)
-          return
-        }
-        console.log("fn", fn, proc, args, evaluatedArgs)
-        return proc(...evaluatedArgs)
+      case "quote": {
+        return expression
       }
     }
   }
+  return _evaluate(expression, environment)
 }

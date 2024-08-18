@@ -365,28 +365,31 @@ describe("Let and Let*", () => {
 describe("Quote and Unquote", () => {
   it("should return a list as data when quoted", () => {
     const env = standardEnvironment()
-    const ast = parse(tokenize("('(1 2 3))"))
-    console.log("ast", ast)
+    const ast = parse(tokenize("'(1 2 3)"))
     const result = evaluate(ast, env)
     expect(result).toEqual([1, 2, 3]) // Should return the list as data, not evaluate it
   })
 
   it("should return a symbol as data when quoted", () => {
     const env = standardEnvironment()
-    const result = evaluate(parse(tokenize("('x)")), env)
+    const ast = parse(tokenize("'x"))
+    console.log("ast", ast)
+    const result = evaluate(ast, env)
     expect(result).toEqual("x") // Should return the symbol 'x' as data
   })
 
   it("should evaluate an expression with unquote", () => {
     const env = standardEnvironment()
     evaluate(parse(tokenize("(define x 10)")), env)
-    const result = evaluate(parse(tokenize("'(1 2 ,x 4)")), env)
+    const result = evaluate(parse(tokenize("`(1 2 ,x 4)")), env)
     expect(result).toEqual([1, 2, 10, 4]) // Should evaluate x as 10 in the quoted list
   })
 
   it("should handle nested quotes correctly", () => {
     const env = standardEnvironment()
-    const result = evaluate(parse(tokenize("(quote (quote (1 2 3)))")), env)
+    const ast = parse(tokenize("(quote (quote (1 2 3)))"))
+    const result = evaluate(ast, env)
+    console.log("ast is ", ast, result)
     expect(result).toEqual(["quote", [1, 2, 3]]) // Should return the inner quote as data
   })
 
