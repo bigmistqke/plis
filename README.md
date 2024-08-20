@@ -1,8 +1,8 @@
-# 💋 @bigmistqke/lips
+# 🥺👉👈 @bigmistqke/plis
 
-[![npm version](https://badgen.net/npm/v/lips)](https://npm.im/lips) [![npm downloads](https://badgen.net/npm/dm/lips)](https://npm.im/lips)
+[![npm version](https://badgen.net/npm/v/plis)](https://npm.im/plis) [![npm downloads](https://badgen.net/npm/dm/plis)](https://npm.im/plis)
 
-toy lisp language.
+toy lisp interpreter.
 
 ## Sponsors
 
