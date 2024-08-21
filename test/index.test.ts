@@ -57,6 +57,28 @@ describe("Parsing", () => {
     const ast = parse(tokenize("(define square (fn (x) (* x x)))"))
     expect(ast).toEqual(["define", "square", ["fn", ["x"], ["*", "x", "x"]]])
   })
+
+  // Adding tests for quote
+  it("should parse a quote expression", () => {
+    const ast = parse(tokenize("'(1 2 3)"))
+    expect(ast).toEqual(["quote", [1, 2, 3]])
+  })
+
+  // Adding tests for quote
+  it("should parse a quote value", () => {
+    const ast = parse(tokenize("'1"))
+    expect(ast).toEqual(["quote", 1])
+  })
+
+  it("should parse nested quote expressions", () => {
+    const ast = parse(tokenize("'('foo)"))
+    expect(ast).toEqual(["quote", [["quote", "foo"]]])
+  })
+
+  it("should parse nested quote values", () => {
+    const ast = parse(tokenize("''foo"))
+    expect(ast).toEqual(["quote", ["quote", "foo"]])
+  })
 })
 
 describe("Basic Evaluation", () => {
@@ -162,7 +184,6 @@ describe("Advanced Functionality", () => {
   it("should handle closures", () => {
     const env = standardEnvironment()
     evaluate(parse(tokenize("(define adder (fn (x) (fn (y) (+ x y))))")), env)
-    const add5 = evaluate(parse(tokenize("(adder 5)")), env)
     const result = evaluate(parse(tokenize("((adder 5) 2)")), env)
     expect(result).toBe(7)
   })
@@ -192,7 +213,6 @@ describe("Conditional Expressions", () => {
 describe("List Manipulation", () => {
   it("should evaluate a simple list", () => {
     const env = standardEnvironment()
-    console.log("tokens", tokenize("'(1 2 3 4 5)"))
     const result = evaluate(parse(tokenize("'(1 2 3 4 5)")), env)
     expect(result).toEqual([1, 2, 3, 4, 5])
   })
@@ -373,7 +393,6 @@ describe("Quote and Unquote", () => {
   it("should return a symbol as data when quoted", () => {
     const env = standardEnvironment()
     const ast = parse(tokenize("'x"))
-    console.log("ast", ast)
     const result = evaluate(ast, env)
     expect(result).toEqual("x") // Should return the symbol 'x' as data
   })
@@ -381,7 +400,8 @@ describe("Quote and Unquote", () => {
   it("should evaluate an expression with unquote", () => {
     const env = standardEnvironment()
     evaluate(parse(tokenize("(define x 10)")), env)
-    const result = evaluate(parse(tokenize("`(1 2 ,x 4)")), env)
+    const ast = parse(tokenize("`(1 2 ,x 4)"))
+    const result = evaluate(ast, env)
     expect(result).toEqual([1, 2, 10, 4]) // Should evaluate x as 10 in the quoted list
   })
 
@@ -389,7 +409,6 @@ describe("Quote and Unquote", () => {
     const env = standardEnvironment()
     const ast = parse(tokenize("(quote (quote (1 2 3)))"))
     const result = evaluate(ast, env)
-    console.log("ast is ", ast, result)
     expect(result).toEqual(["quote", [1, 2, 3]]) // Should return the inner quote as data
   })
 
