@@ -3,10 +3,10 @@
 Toy lisp interpreter.
 
 Support for:
-- `define`: `(define big 69)`
-- `fn`: `(fn add (a b) (+ a b))`
-- `let`/`let*`-bindings: `(let ((big 69) (mistqke 420)) (add big mistqke))`
-- `quote`/`quasiquote`/`unquote`: `'(1 2 3)` `(quasiquote (1 ,(+ 1 1), 3))` 
+- `define` 👉 `(define big 69)`
+- `fn` 👉 `(fn add (a b) (+ a b))`
+- `let`/`let*`-bindings 👉 `(let ((big 69) (mistqke 420)) (add big mistqke))`
+- `quote`/`quasiquote`/`unquote` 👉 `'(1 2 3)` `(quasiquote (1 ,(+ 1 1), 3))` 
 
 ## How To Use
 
