@@ -1,7 +1,5 @@
 # 🥺👉👈 @bigmistqke/plis
 
-[![npm version](https://badgen.net/npm/v/plis)](https://npm.im/plis) [![npm downloads](https://badgen.net/npm/dm/plis)](https://npm.im/plis)
-
 toy lisp interpreter.
 
 ## Repl
