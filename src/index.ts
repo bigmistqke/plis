@@ -84,7 +84,12 @@ export function createStandardEnvironment(): Environment {
     "*": (args: Cons) =>
       reduce(args, (a, _b) => (a === undefined ? _b.value : a * _b.value)),
     "/": (_args: Cons) =>
-      reduce(_args, (a, _b) => (a === undefined ? _b.value : a / _b.value)),
+      reduce(_args, (a, _b) => {
+        if (_b.value === 0) {
+          throw new InvalidArgumentError("Should not divide by 0")
+        }
+        return a === undefined ? _b.value : a / _b.value
+      }),
     ">": (_args: Cons) => {
       const [_a, _b] = destructure(_args)
       return _a.value > _b.value
@@ -345,7 +350,7 @@ export function evaluate(
 /*                                                                                */
 /**********************************************************************************/
 
-export function transpile(
+export function interpret(
   source: string,
   environment = createStandardEnvironment(),
 ) {
@@ -353,13 +358,14 @@ export function transpile(
   return evaluate(ast, environment)
 }
 
-transpile.pipe = function (
+interpret.pipe = function (
   source: string,
   environment = createStandardEnvironment(),
 ) {
-  const value = transpile(source, environment)
+  const value = interpret(source, environment)
   return {
     value,
-    pipe: (expression: string) => transpile.pipe(expression, environment),
+    pipe: (expression: string) => interpret.pipe(expression, environment),
+    return: (expression: string) => interpret(expression, environment),
   }
 }
