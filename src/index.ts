@@ -14,7 +14,6 @@ const DEBUG = false
 export type AstValue = string | number | null
 export type Ast = Cons<AstValue | Ast, Ast>
 export type AstJson = AstValue | Array<AstJson>
-export type Environment = Record<string, any>
 export type Mode = "evaluate" | "quote" | "quasiquote"
 
 /**********************************************************************************/
@@ -60,8 +59,24 @@ export class InvalidFunctionError extends Error {
 /*                                                                                */
 /**********************************************************************************/
 
-export function standardEnvironment(): Environment {
-  return {
+class Environment {
+  constructor(
+    public parent: Environment | null,
+    public values: Record<string, any> = {},
+  ) {}
+  get(symbol: string): any | undefined {
+    if (symbol in this.values) {
+      return this.values[symbol]
+    }
+    return this.parent?.get(symbol)
+  }
+  set(symbol: string, value: any) {
+    this.values[symbol] = value
+  }
+}
+
+export function createStandardEnvironment(): Environment {
+  return new Environment(null, {
     "+": (_args: Cons) =>
       reduce(_args, (a, _b) => (a === undefined ? _b.value : a + _b.value)),
     "-": (_args: Cons) =>
@@ -99,7 +114,7 @@ export function standardEnvironment(): Environment {
       const [_first] = destructure(list, 1)
       return _first.next
     },
-  }
+  })
 }
 
 /**********************************************************************************/
@@ -192,14 +207,11 @@ class Scope {
 
 export function evaluate(
   expression: Ast | AstValue,
-  environment = standardEnvironment(),
+  environment = createStandardEnvironment(),
 ): any {
   const mode = new Scope("evaluate")
 
-  function evaluate(
-    expression: Ast | AstValue,
-    environment = standardEnvironment(),
-  ): any {
+  function evaluate(expression: Ast | AstValue, environment: Environment): any {
     DEBUG && console.info("_evaluate", toJson(expression))
     switch (mode.current) {
       case "evaluate": {
@@ -211,10 +223,11 @@ export function evaluate(
           if (expression[0] === ",") {
             return evaluate(expression.slice(1, -1), environment)
           }
-          if (!(expression in environment)) {
+          const variable = environment.get(expression)
+          if (!variable) {
             throw new UndefinedVariableError(expression)
           }
-          return environment[expression]
+          return variable
         }
 
         if (typeof expression === "number") {
@@ -232,7 +245,7 @@ export function evaluate(
                 "Name in 'define' must be a string.",
               )
             }
-            environment[_name.value] = evaluate(_body.value, environment)
+            environment.set(_name.value, evaluate(_body.value, environment))
             return
           }
           case "fn": {
@@ -245,16 +258,16 @@ export function evaluate(
             }
             return (args: Cons) => {
               const destructedArgs = destructure(args)
-              const localEnv: Environment = { ...environment }
+              const fnEnvironment: Environment = new Environment(environment)
               forEach(params, (_param, index) => {
                 if (typeof _param.value !== "string") {
                   throw new InvalidArgumentError(
                     "Parameter names must be strings.",
                   )
                 }
-                localEnv[_param.value] = destructedArgs[index].value
+                fnEnvironment.set(_param.value, destructedArgs[index].value)
               })
-              return evaluate(_body.value, localEnv)
+              return evaluate(_body.value, fnEnvironment)
             }
           }
           case "if": {
@@ -273,7 +286,7 @@ export function evaluate(
                 "Bindings for 'let' or 'let*' must be a list.",
               )
             }
-            const scopedEnvironment = { ...environment }
+            const letEnvironment = new Environment(environment)
             forEach(_params.value, (_param) => {
               if (!isCons(_param.value)) {
                 throw new InvalidExpressionError("Each binding must be a list.")
@@ -282,12 +295,15 @@ export function evaluate(
               if (typeof _name.value !== "string") {
                 throw new InvalidArgumentError("Binding names must be strings.")
               }
-              scopedEnvironment[_name.value] = evaluate(
-                _value.value,
-                keyword === "let" ? environment : scopedEnvironment,
+              letEnvironment.set(
+                _name.value,
+                evaluate(
+                  _value.value,
+                  keyword === "let" ? environment : letEnvironment,
+                ),
               )
             })
-            return evaluate(_body.value, scopedEnvironment)
+            return evaluate(_body.value, letEnvironment)
           }
           case "quote":
             return _rest.value
