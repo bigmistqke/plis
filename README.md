@@ -18,7 +18,7 @@ interpret("(+ 1 2)")
 
 // Add custom environment
 const environment = createStandardEnvironment()
-environment.add("uppercase", (arg: Cons) => { return arg.value.toUppercase() })
+environment.add("uppercase", (arg: Cons) => { return arg.value.value.toUppercase() })
 interpret("(+ 1 2)", environment)
 
 // Chain multiple lines with shared environment
