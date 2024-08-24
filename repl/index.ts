@@ -1,5 +1,5 @@
 import readline from "readline"
-import { evaluate, parse, standardEnvironment, tokenize } from "../src" // Adjust the import path as necessary
+import { createStandardEnvironment, evaluate, parse, tokenize } from "../src" // Adjust the import path as necessary
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -7,7 +7,7 @@ const rl = readline.createInterface({
   prompt: "plis> ",
 })
 
-const env = standardEnvironment()
+const env = createStandardEnvironment()
 
 function repl(prompt: string): void {
   rl.prompt()

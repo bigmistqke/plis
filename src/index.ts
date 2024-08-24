@@ -338,3 +338,28 @@ export function evaluate(
 
   return evaluate(expression, environment)
 }
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                    Transpile                                   */
+/*                                                                                */
+/**********************************************************************************/
+
+export function transpile(
+  source: string,
+  environment = createStandardEnvironment(),
+) {
+  const ast = parse(tokenize(source))
+  return evaluate(ast, environment)
+}
+
+transpile.pipe = function (
+  source: string,
+  environment = createStandardEnvironment(),
+) {
+  const value = transpile(source, environment)
+  return {
+    value,
+    pipe: (expression: string) => transpile.pipe(expression, environment),
+  }
+}

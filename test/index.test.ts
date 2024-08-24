@@ -2,11 +2,10 @@ import { describe, expect, it } from "vitest"
 import {
   Cons,
   InvalidExpressionError,
-  evaluate,
   parse,
-  standardEnvironment,
   toJson,
   tokenize,
+  transpile,
 } from "../src"
 
 describe("Tokenization", () => {
@@ -95,84 +94,81 @@ describe("Parsing", () => {
 
 describe("Basic Evaluation", () => {
   it("should evaluate addition", () => {
-    const ast = parse(tokenize("(+ (+ 1 2) 2)"))
-    const result = evaluate(ast, standardEnvironment())
+    const result = transpile("(+ (+ 1 2) 2)")
     expect(result).toBe(5)
   })
 
   it("should evaluate subtraction", () => {
-    const result = evaluate(parse(tokenize("(- 5 3)")), standardEnvironment())
+    const result = transpile("(- 5 3)")
     expect(result).toBe(2)
   })
 
   it("should evaluate multiplication", () => {
-    const result = evaluate(parse(tokenize("(* 4 2)")), standardEnvironment())
+    const result = transpile("(* 4 2)")
     expect(result).toBe(8)
   })
 
   it("should evaluate division", () => {
-    const result = evaluate(parse(tokenize("(/ 10 2)")), standardEnvironment())
+    const result = transpile("(/ 10 2)")
     expect(result).toBe(5)
   })
 })
 
 describe("Variable Definition", () => {
   it("should define and retrieve a variable", () => {
-    const env = standardEnvironment()
-    const ast = parse(tokenize("(define x 10)"))
-    evaluate(ast, env)
-    const result = evaluate(parse(tokenize("x")), env)
+    const result = transpile.pipe("(define x 10)").pipe("x").value
     expect(result).toBe(10)
   })
 
   it("should update an existing variable", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define x 10)")), env)
-    evaluate(parse(tokenize("(define x 20)")), env)
-    const result = evaluate(parse(tokenize("x")), env)
+    const result = transpile
+      .pipe("(define x 10)")
+      .pipe("(define x 20)")
+      .pipe("x").value
+
     expect(result).toBe(20)
   })
 })
 
 describe("Function Definition and Application", () => {
   it("should define and call a simple function", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define square (fn (x) (* x x)))")), env)
-    const result = evaluate(parse(tokenize("(square 4)")), env)
+    const result = transpile
+      .pipe("(define square (fn (x) (* x x)))")
+      .pipe("(square 4)").value
+
     expect(result).toBe(16)
   })
 
   it("should define and call a function with multiple arguments", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define add (fn (x y) (+ x y)))")), env)
-    const result = evaluate(parse(tokenize("(add 2 3)")), env)
+    const result = transpile
+      .pipe("(define add (fn (x y) (+ x y)))")
+      .pipe("(add 2 3)").value
+
     expect(result).toBe(5)
   })
 })
 
 describe("Nested Function Calls", () => {
   it("should evaluate nested function calls", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define square (fn (x) (* x x)))")), env)
-    const result = evaluate(parse(tokenize("(+ (square 3) (square 4))")), env)
+    const result = transpile
+      .pipe("(define square (fn (x) (* x x)))")
+      .pipe("(+ (square 3) (square 4))").value
+
     expect(result).toBe(25)
   })
 
   it("should handle deeply nested calls", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define double (fn (x) (* 2 x)))")), env)
-    const result = evaluate(
-      parse(tokenize("(double (double (double 2)))")),
-      env,
-    )
+    const result = transpile
+      .pipe("(define double (fn (x) (* 2 x)))")
+      .pipe("(double (double (double 2)))").value
+
     expect(result).toBe(16)
   })
 })
 
 describe("Error Handling", () => {
   it("should throw an error for undefined variables", () => {
-    const env = standardEnvironment()
-    expect(() => evaluate(parse(tokenize("y")), env)).toThrow()
+    expect(() => transpile("y")).toThrow()
   })
 
   it("should throw an error for invalid syntax", () => {
@@ -186,267 +182,174 @@ describe("Error Handling", () => {
 
 describe("Advanced Functionality", () => {
   it("should allow functions to return functions", () => {
-    const env = standardEnvironment()
-    const ast0 = parse(
-      tokenize("(define make-adder (fn (x) (fn (y) (+ x y))))"),
-    )
-    evaluate(ast0, env)
-    const ast1 = parse(tokenize("(make-adder 3)"))
-    const adder3 = evaluate(ast1, env)
+    const adder3 = transpile
+      .pipe("(define make-adder (fn (x) (fn (y) (+ x y))))")
+      .pipe("(make-adder 3)").value
+
     expect(adder3(new Cons(4))).toBe(7)
   })
 
   it("should handle closures", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define adder (fn (x) (fn (y) (+ x y))))")), env)
-    const result = evaluate(parse(tokenize("((adder 5) 2)")), env)
+    const result = transpile
+      .pipe("(define adder (fn (x) (fn (y) (+ x y))))")
+      .pipe("((adder 5) 2)").value
+
     expect(result).toBe(7)
   })
 })
 
 describe("Conditional Expressions", () => {
   it("should evaluate a simple if expression", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define x 5)")), env)
-    const tokens = tokenize("(if (> x 3) (+ x 1) (- x 1))")
-    const ast = parse(tokens)
-    const result = evaluate(ast, env)
+    const result = transpile
+      .pipe("(define x 5)")
+      .pipe("(if (> x 3) (+ x 1) (- x 1))").value
+
     expect(result).toBe(6)
   })
 
   it("should evaluate nested if expressions", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define x 5)")), env)
-    const result = evaluate(
-      parse(tokenize("(if (> x 10) (* x 2) (if (< x 3) (/ x 2) (+ x 1)))")),
-      env,
-    )
+    const result = transpile
+      .pipe("(define x 5)")
+      .pipe("(if (> x 10) (* x 2) (if (< x 3) (/ x 2) (+ x 1)))").value
+
     expect(result).toBe(6)
   })
 })
 
 describe("List Manipulation", () => {
   it("should evaluate a simple list", () => {
-    const env = standardEnvironment()
-    const result = evaluate(parse(tokenize("'(1 2 3 4 5)")), env)
+    const result = transpile("'(1 2 3 4 5)")
     expect(toJson(result)).toEqual([1, 2, 3, 4, 5])
   })
 
   it("should evaluate list operations like car", () => {
-    const env = standardEnvironment()
-    const ast = parse(tokenize("(first (quote (1 2 3)))"))
-    const resultCar = evaluate(ast, env)
+    const resultCar = transpile("(first (quote (1 2 3)))")
     expect(resultCar).toBe(1)
   })
 
   it("should evaluate list operations like cdr", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define cdr (fn (lst) (rest lst)))")), env)
-    const resultCdr = evaluate(parse(tokenize("(cdr (quote (1 2 3)))")), env)
-    expect(toJson(resultCdr)).toEqual([2, 3])
+    const result = transpile
+      .pipe("(define cdr (fn (lst) (rest lst)))")
+      .pipe("(cdr (quote (1 2 3)))").value
+
+    expect(toJson(result)).toEqual([2, 3])
   })
 })
 
 describe("Let and Let*", () => {
   it("should evaluate let with independent bindings", () => {
-    const env = standardEnvironment()
-    const ast = parse(
-      tokenize(`
+    const result = transpile(`
     (let ((x 2)
           (y 3))
       (* x y))
-  `),
-    )
-    const result = evaluate(ast, env)
+  `)
     expect(result).toBe(6) // 2 * 3 = 6
   })
 
   it("should evaluate let with bindings independent of inner scope", () => {
-    const env = standardEnvironment()
-    evaluate(
-      parse(
-        tokenize(`
-      (define x 5)
-    `),
-      ),
-      env,
-    )
-
-    const result = evaluate(
-      parse(
-        tokenize(`
+    const result = transpile.pipe(`(define x 5)`).pipe(`
       (let ((x 2)
             (y (+ x 3)))
         (* x y))
-    `),
-      ),
-      env,
-    )
+    `).value
 
     expect(result).toBe(16) // 2 * (5 + 3) = 16
   })
 
   it("should evaluate let* with sequential bindings", () => {
-    const env = standardEnvironment()
-    const result = evaluate(
-      parse(
-        tokenize(`
+    const result = transpile(`
       (let* ((x 2)
              (y (+ x 3)))
         (* x y))
-    `),
-      ),
-      env,
-    )
+    `)
     expect(result).toBe(10) // 2 * (2 + 3) = 10
   })
 
   it("should evaluate let* with dependencies between bindings", () => {
-    const env = standardEnvironment()
-    const result = evaluate(
-      parse(
-        tokenize(`
+    const result = transpile(`
       (let* ((a 1)
              (b (+ a 2))
              (c (+ b 3)))
         (+ a b c))
-    `),
-      ),
-      env,
-    )
+    `)
     expect(result).toBe(10) // 1 + (1 + 2) + ((1 + 2) + 3) = 10
   })
 
   it("should evaluate let* with local shadowing", () => {
-    const env = standardEnvironment()
-    evaluate(
-      parse(
-        tokenize(`
-      (define x 10)
-    `),
-      ),
-      env,
-    )
-
-    const result = evaluate(
-      parse(
-        tokenize(`
-      (let* ((x 2)
+    const result = transpile.pipe(`(define x 10) `).pipe(
+      `(let* ((x 2)
              (y (* x 3)))
-        (+ x y))
-    `),
-      ),
-      env,
-    )
+        (+ x y))`,
+    ).value
 
     expect(result).toBe(8) // 2 + (2 * 3) = 8
   })
 
   it("should not affect outer scope with let", () => {
-    const env = standardEnvironment()
-    evaluate(
-      parse(
-        tokenize(`
-      (define z 5)
-    `),
-      ),
-      env,
-    )
+    const result = transpile
+      .pipe(`(define z 5)`)
+      .pipe(`(let ((z 10)) z)`)
+      .pipe("z").value
 
-    evaluate(
-      parse(
-        tokenize(`
-      (let ((z 10))
-        z)
-    `),
-      ),
-      env,
-    )
-
-    const result = evaluate(parse(tokenize(`z`)), env)
     expect(result).toBe(5) // The outer z should remain unchanged
   })
 
   it("should evaluate nested let expressions correctly", () => {
-    const env = standardEnvironment()
-    const result = evaluate(
-      parse(
-        tokenize(`
+    const result = transpile(`
       (let ((x 2))
         (let ((y 3))
           (+ x y)))
-    `),
-      ),
-      env,
-    )
+    `)
     expect(result).toBe(5) // 2 + 3 = 5
   })
 
   it("should handle complex let* with multiple dependent bindings", () => {
-    const env = standardEnvironment()
-    const result = evaluate(
-      parse(
-        tokenize(`
+    const result = transpile(`
       (let* ((x 2)
              (y (* x 3))
              (z (+ x y)))
         z)
-    `),
-      ),
-      env,
-    )
+    `)
     expect(result).toBe(8) // 2 + (2 * 3) = 8
   })
 })
 
 describe("Quote and Unquote", () => {
   it("should return a list as data when quoted", () => {
-    const env = standardEnvironment()
-    const ast = parse(tokenize("'(1 2 3)"))
-    const result = evaluate(ast, env)
+    const result = transpile("'(1 2 3)")
     expect(toJson(result)).toEqual([1, 2, 3]) // Should return the list as data, not evaluate it
   })
 
   it("should return a symbol as data when quoted", () => {
-    const env = standardEnvironment()
-    const ast = parse(tokenize("'x"))
-    const result = evaluate(ast, env)
+    const result = transpile("'x")
     expect(toJson(result)).toEqual("x") // Should return the symbol 'x' as data
   })
 
   it("should evaluate an expression with unquote", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define x 10)")), env)
-    const ast = parse(tokenize("`(1 2 ,x 4)"))
-    const result = evaluate(ast, env)
+    const result = transpile.pipe("(define x 10)").pipe("`(1 2 ,x 4)").value
     expect(toJson(result)).toEqual([1, 2, 10, 4]) // Should evaluate x as 10 in the quoted list
   })
 
   it("should handle nested quotes correctly", () => {
-    const env = standardEnvironment()
-    const ast = parse(tokenize("(quote (quote (1 2 3)))"))
-    const result = evaluate(ast, env)
+    const result = transpile("(quote (quote (1 2 3)))")
     expect(toJson(result)).toEqual(["quote", [1, 2, 3]]) // Should return the inner quote as data
   })
 
   it("should handle unquote in a nested structure", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define y 5)")), env)
-    const result = evaluate(parse(tokenize("`(a b (c ,y))")), env)
+    const result = transpile.pipe("(define y 5)").pipe("`(a b (c ,y))").value
     expect(toJson(result)).toEqual(["a", "b", ["c", 5]]) // Should evaluate y inside the nested list
   })
 
   it("should return the list structure as-is when quoted with no unquotes", () => {
-    const env = standardEnvironment()
-    const result = evaluate(parse(tokenize("(quote (a b c d))")), env)
+    const result = transpile("(quote (a b c d))")
     expect(toJson(result)).toEqual(["a", "b", "c", "d"]) // Should return the list as data
   })
 
   it("should evaluate multiple unquotes within a single list", () => {
-    const env = standardEnvironment()
-    evaluate(parse(tokenize("(define a 1)")), env)
-    evaluate(parse(tokenize("(define b 2)")), env)
-    const result = evaluate(parse(tokenize("`(,a ,b ,(+ a b))")), env)
+    const result = transpile
+      .pipe("(define a 1)")
+      .pipe("(define b 2)")
+      .pipe("`(,a ,b ,(+ a b))").value
     expect(toJson(result)).toEqual([1, 2, 3]) // a = 1, b = 2, (+ a b) = 3
   })
 })
