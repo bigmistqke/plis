@@ -18,7 +18,7 @@
   "scripts": {
     "build-fast": "tsup src/index.ts --format cjs,esm",
     "build": "pnpm run build-fast -- --dts-resolve",
-    "test": "vitest run",
+    "test": "vitest run --silent=false",
     "prepublishOnly": "pnpm run build",
     "repl": "tsx ./repl/index.ts"
   },

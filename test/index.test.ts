@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest"
-import { evaluate, parse, standardEnvironment, tokenize } from "../src"
+import {
+  Cons,
+  InvalidExpressionError,
+  evaluate,
+  parse,
+  standardEnvironment,
+  toJson,
+  tokenize,
+} from "../src"
 
 describe("Tokenization", () => {
   it("should tokenize a simple expression", () => {
@@ -40,51 +48,56 @@ describe("Tokenization", () => {
 describe("Parsing", () => {
   it("should parse a simple expression", () => {
     const ast = parse(tokenize("(+ 1 2)"))
-    expect(ast).toEqual(["+", 1, 2])
+    expect(toJson(ast)).toEqual(["+", 1, 2])
   })
 
   it("should parse nested expressions", () => {
     const ast = parse(tokenize("(* (+ 1 2) (- 3 4))"))
-    expect(ast).toEqual(["*", ["+", 1, 2], ["-", 3, 4]])
+    expect(toJson(ast)).toEqual(["*", ["+", 1, 2], ["-", 3, 4]])
   })
 
   it("should parse a define statement", () => {
     const ast = parse(tokenize("(define x 10)"))
-    expect(ast).toEqual(["define", "x", 10])
+    expect(toJson(ast)).toEqual(["define", "x", 10])
   })
 
   it("should parse a function definition", () => {
     const ast = parse(tokenize("(define square (fn (x) (* x x)))"))
-    expect(ast).toEqual(["define", "square", ["fn", ["x"], ["*", "x", "x"]]])
+    expect(toJson(ast)).toEqual([
+      "define",
+      "square",
+      ["fn", ["x"], ["*", "x", "x"]],
+    ])
   })
 
   // Adding tests for quote
   it("should parse a quote expression", () => {
     const ast = parse(tokenize("'(1 2 3)"))
-    expect(ast).toEqual(["quote", [1, 2, 3]])
+    expect(toJson(ast)).toEqual(["quote", [1, 2, 3]])
   })
 
   // Adding tests for quote
   it("should parse a quote value", () => {
     const ast = parse(tokenize("'1"))
-    expect(ast).toEqual(["quote", 1])
+    expect(toJson(ast)).toEqual(["quote", 1])
   })
 
   it("should parse nested quote expressions", () => {
     const ast = parse(tokenize("'('foo)"))
-    expect(ast).toEqual(["quote", [["quote", "foo"]]])
+    expect(toJson(ast)).toEqual(["quote", [["quote", "foo"]]])
   })
 
   it("should parse nested quote values", () => {
     const ast = parse(tokenize("''foo"))
-    expect(ast).toEqual(["quote", ["quote", "foo"]])
+    expect(toJson(ast)).toEqual(["quote", ["quote", "foo"]])
   })
 })
 
 describe("Basic Evaluation", () => {
   it("should evaluate addition", () => {
-    const result = evaluate(parse(tokenize("(+ 1 2)")), standardEnvironment())
-    expect(result).toBe(3)
+    const ast = parse(tokenize("(+ (+ 1 2) 2)"))
+    const result = evaluate(ast, standardEnvironment())
+    expect(result).toBe(5)
   })
 
   it("should evaluate subtraction", () => {
@@ -106,7 +119,8 @@ describe("Basic Evaluation", () => {
 describe("Variable Definition", () => {
   it("should define and retrieve a variable", () => {
     const env = standardEnvironment()
-    evaluate(parse(tokenize("(define x 10)")), env)
+    const ast = parse(tokenize("(define x 10)"))
+    evaluate(ast, env)
     const result = evaluate(parse(tokenize("x")), env)
     expect(result).toBe(10)
   })
@@ -162,23 +176,24 @@ describe("Error Handling", () => {
   })
 
   it("should throw an error for invalid syntax", () => {
-    expect(() => parse(tokenize("(define x"))).toThrow(SyntaxError)
+    expect(() => parse(tokenize("(define x"))).toThrow(InvalidExpressionError)
   })
 
   it("should throw an error for missing parentheses", () => {
-    expect(() => parse(tokenize("(+ 1 2"))).toThrow(SyntaxError)
+    expect(() => parse(tokenize("(+ 1 2"))).toThrow(InvalidExpressionError)
   })
 })
 
 describe("Advanced Functionality", () => {
   it("should allow functions to return functions", () => {
     const env = standardEnvironment()
-    evaluate(
-      parse(tokenize("(define make-adder (fn (x) (fn (y) (+ x y))))")),
-      env,
+    const ast0 = parse(
+      tokenize("(define make-adder (fn (x) (fn (y) (+ x y))))"),
     )
-    const adder3 = evaluate(parse(tokenize("(make-adder 3)")), env)
-    expect(adder3(4)).toBe(7)
+    evaluate(ast0, env)
+    const ast1 = parse(tokenize("(make-adder 3)"))
+    const adder3 = evaluate(ast1, env)
+    expect(adder3(new Cons(4))).toBe(7)
   })
 
   it("should handle closures", () => {
@@ -214,33 +229,35 @@ describe("List Manipulation", () => {
   it("should evaluate a simple list", () => {
     const env = standardEnvironment()
     const result = evaluate(parse(tokenize("'(1 2 3 4 5)")), env)
-    expect(result).toEqual([1, 2, 3, 4, 5])
+    expect(toJson(result)).toEqual([1, 2, 3, 4, 5])
   })
 
-  it("should evaluate list operations like car and cdr", () => {
+  it("should evaluate list operations like car", () => {
     const env = standardEnvironment()
-    evaluate(parse(tokenize("(define car (fn (lst) (first lst)))")), env)
-    evaluate(parse(tokenize("(define cdr (fn (lst) (rest lst)))")), env)
-    const resultCar = evaluate(parse(tokenize("(car '(1 2 3))")), env)
-    const resultCdr = evaluate(parse(tokenize("(cdr '(1 2 3))")), env)
+    const ast = parse(tokenize("(first (quote (1 2 3)))"))
+    const resultCar = evaluate(ast, env)
     expect(resultCar).toBe(1)
-    expect(resultCdr).toEqual([2, 3])
+  })
+
+  it("should evaluate list operations like cdr", () => {
+    const env = standardEnvironment()
+    evaluate(parse(tokenize("(define cdr (fn (lst) (rest lst)))")), env)
+    const resultCdr = evaluate(parse(tokenize("(cdr (quote (1 2 3)))")), env)
+    expect(toJson(resultCdr)).toEqual([2, 3])
   })
 })
 
 describe("Let and Let*", () => {
   it("should evaluate let with independent bindings", () => {
     const env = standardEnvironment()
-    const result = evaluate(
-      parse(
-        tokenize(`
-      (let ((x 2)
-            (y 3))
-        (* x y))
-    `),
-      ),
-      env,
+    const ast = parse(
+      tokenize(`
+    (let ((x 2)
+          (y 3))
+      (* x y))
+  `),
     )
+    const result = evaluate(ast, env)
     expect(result).toBe(6) // 2 * 3 = 6
   })
 
@@ -387,14 +404,14 @@ describe("Quote and Unquote", () => {
     const env = standardEnvironment()
     const ast = parse(tokenize("'(1 2 3)"))
     const result = evaluate(ast, env)
-    expect(result).toEqual([1, 2, 3]) // Should return the list as data, not evaluate it
+    expect(toJson(result)).toEqual([1, 2, 3]) // Should return the list as data, not evaluate it
   })
 
   it("should return a symbol as data when quoted", () => {
     const env = standardEnvironment()
     const ast = parse(tokenize("'x"))
     const result = evaluate(ast, env)
-    expect(result).toEqual("x") // Should return the symbol 'x' as data
+    expect(toJson(result)).toEqual("x") // Should return the symbol 'x' as data
   })
 
   it("should evaluate an expression with unquote", () => {
@@ -402,27 +419,27 @@ describe("Quote and Unquote", () => {
     evaluate(parse(tokenize("(define x 10)")), env)
     const ast = parse(tokenize("`(1 2 ,x 4)"))
     const result = evaluate(ast, env)
-    expect(result).toEqual([1, 2, 10, 4]) // Should evaluate x as 10 in the quoted list
+    expect(toJson(result)).toEqual([1, 2, 10, 4]) // Should evaluate x as 10 in the quoted list
   })
 
   it("should handle nested quotes correctly", () => {
     const env = standardEnvironment()
     const ast = parse(tokenize("(quote (quote (1 2 3)))"))
     const result = evaluate(ast, env)
-    expect(result).toEqual(["quote", [1, 2, 3]]) // Should return the inner quote as data
+    expect(toJson(result)).toEqual(["quote", [1, 2, 3]]) // Should return the inner quote as data
   })
 
   it("should handle unquote in a nested structure", () => {
     const env = standardEnvironment()
     evaluate(parse(tokenize("(define y 5)")), env)
     const result = evaluate(parse(tokenize("`(a b (c ,y))")), env)
-    expect(result).toEqual(["a", "b", ["c", 5]]) // Should evaluate y inside the nested list
+    expect(toJson(result)).toEqual(["a", "b", ["c", 5]]) // Should evaluate y inside the nested list
   })
 
   it("should return the list structure as-is when quoted with no unquotes", () => {
     const env = standardEnvironment()
     const result = evaluate(parse(tokenize("(quote (a b c d))")), env)
-    expect(result).toEqual(["a", "b", "c", "d"]) // Should return the list as data
+    expect(toJson(result)).toEqual(["a", "b", "c", "d"]) // Should return the list as data
   })
 
   it("should evaluate multiple unquotes within a single list", () => {
@@ -430,6 +447,6 @@ describe("Quote and Unquote", () => {
     evaluate(parse(tokenize("(define a 1)")), env)
     evaluate(parse(tokenize("(define b 2)")), env)
     const result = evaluate(parse(tokenize("`(,a ,b ,(+ a b))")), env)
-    expect(result).toEqual([1, 2, 3]) // a = 1, b = 2, (+ a b) = 3
+    expect(toJson(result)).toEqual([1, 2, 3]) // a = 1, b = 2, (+ a b) = 3
   })
 })

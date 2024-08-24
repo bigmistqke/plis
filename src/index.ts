@@ -1,4 +1,114 @@
-// TODO:  replace with tokenizer that properly handles strings and comments
+import { Cons, destructure, forEach, isCons, map, reduce } from "./cons"
+import { toJson } from "./utils"
+export * from "./cons"
+export * from "./utils"
+
+const DEBUG = false
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                      Types                                     */
+/*                                                                                */
+/**********************************************************************************/
+
+export type AstValue = string | number | null
+export type Ast = Cons<AstValue | Ast, Ast>
+export type AstJson = AstValue | Array<AstJson>
+export type Environment = Record<string, any>
+export type Mode = "evaluate" | "quote" | "quasiquote"
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                     Errors                                     */
+/*                                                                                */
+/**********************************************************************************/
+export class UndefinedVariableError extends Error {
+  constructor(variable: string) {
+    super(`Undefined variable: ${variable}`)
+    this.name = "UndefinedVariableError"
+  }
+}
+
+export class InvalidExpressionError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "InvalidExpressionError"
+  }
+}
+
+export class InvalidArgumentError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "InvalidArgumentError"
+  }
+}
+
+export class InvalidFunctionError extends Error {
+  constructor(proc: any, expression: any) {
+    super(
+      `Function expected, but got ${typeof proc}: ${JSON.stringify(
+        expression,
+      )}`,
+    )
+    this.name = "InvalidFunctionError"
+  }
+}
+
+/**********************************************************************************/
+/*                                                                                */
+/*                              Standard Environment                              */
+/*                                                                                */
+/**********************************************************************************/
+
+export function standardEnvironment(): Environment {
+  return {
+    "+": (_args: Cons) =>
+      reduce(_args, (a, _b) => (a === undefined ? _b.value : a + _b.value)),
+    "-": (_args: Cons) =>
+      reduce(_args, (a, _b) => (a === undefined ? _b.value : a - _b.value)),
+    "*": (args: Cons) =>
+      reduce(args, (a, _b) => (a === undefined ? _b.value : a * _b.value)),
+    "/": (_args: Cons) =>
+      reduce(_args, (a, _b) => (a === undefined ? _b.value : a / _b.value)),
+    ">": (_args: Cons) => {
+      const [_a, _b] = destructure(_args)
+      return _a.value > _b.value
+    },
+    "<": (_args: Cons) => {
+      const [_a, _b] = destructure(_args)
+      return _a.value < _b.value
+    },
+    True: true,
+    False: false,
+    first: (_args: Cons) => {
+      const list = _args.value
+      if (!isCons(list)) {
+        throw new InvalidExpressionError(
+          "fn: first expects first argument to be a linked list",
+        )
+      }
+      return list.value
+    },
+    rest: (_args: Cons) => {
+      const list = _args.value
+      if (!isCons(list)) {
+        throw new InvalidExpressionError(
+          "fn: rest expects first argument to be a linked list",
+        )
+      }
+      const [_first] = destructure(list, 1)
+      return _first.next
+    },
+  }
+}
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                    Tokenize                                    */
+/*                                                                                */
+/**********************************************************************************/
+
+// NOTE: Current tokenizer does not handle comments or strings properly
 export function tokenize(expression: string): string[] {
   return expression
     .replace(/\(/g, " ( ")
@@ -10,27 +120,39 @@ export function tokenize(expression: string): string[] {
     .split(/\s+/)
 }
 
-export function parse(tokens: string[]): any {
+/**********************************************************************************/
+/*                                                                                */
+/*                                      Parse                                     */
+/*                                                                                */
+/**********************************************************************************/
+
+export function parse(tokens: string[]): Ast | AstValue | null {
   if (tokens.length === 0) {
-    throw new SyntaxError("Unexpected EOF")
+    throw new InvalidExpressionError("Unexpected EOF")
   }
 
   const token = tokens.shift()!
-
   switch (token) {
     case "(":
-      const expression = []
+      let current: Ast | null = null
+      let head: Ast | null = null
       while (tokens[0] !== ")") {
-        expression.push(parse(tokens))
+        const result = parse(tokens)
+        if (current === null) {
+          head = current = new Cons(result)
+        } else {
+          current.next = new Cons(result)
+          current = current.next
+        }
       }
-      tokens.shift() // Discard ')'
-      return expression
+      tokens.shift()
+      return head
     case "'":
-      return ["quote", parse(tokens)]
+      return new Cons("quote", new Cons(parse(tokens)))
     case ",":
-      return ["unquote", parse(tokens)]
+      return new Cons("unquote", new Cons(parse(tokens)))
     case "`":
-      return ["quasiquote", parse(tokens)]
+      return new Cons("quasiquote", new Cons(parse(tokens)))
     default:
       return atom(token)
   }
@@ -40,33 +162,21 @@ function atom(token: string) {
   return isNaN(Number(token)) ? token : Number(token)
 }
 
-type Environment = Record<string, any>
+/**********************************************************************************/
+/*                                                                                */
+/*                                      Scope                                     */
+/*                                                                                */
+/**********************************************************************************/
 
-export function standardEnvironment(): Environment {
-  return {
-    "+": (...values: number[]) => values.reduce((a, b) => a + b),
-    "-": (...values: number[]) => values.reduce((a, b) => a - b),
-    "*": (...values: number[]) => values.reduce((a, b) => a * b),
-    "/": (...values: number[]) => values.reduce((a, b) => a / b),
-    ">": (a: number, b: number) => a > b,
-    "<": (a: number, b: number) => a < b,
-    True: true,
-    False: false,
-    first: (lst: any[]) => lst[0],
-    rest: (lst: any[]) => lst.slice(1),
-  }
-}
-
-type Mode = "evaluate" | "quote" | "quasiquote"
-class ScopeStack<T> {
-  array = new Array<T>()
-  constructor(...values: T[]) {
+class Scope {
+  array = new Array<Mode>()
+  constructor(...values: Mode[]) {
     this.array.push(...values)
   }
   get current() {
     return this.array[this.array.length - 1]
   }
-  scope<TValue>(mode: T, callback: () => TValue): TValue {
+  scope<TValue>(mode: Mode, callback: () => TValue): TValue {
     this.array.push(mode)
     const result = callback()
     this.array.pop()
@@ -74,107 +184,141 @@ class ScopeStack<T> {
   }
 }
 
+/**********************************************************************************/
+/*                                                                                */
+/*                                    Evaluate                                    */
+/*                                                                                */
+/**********************************************************************************/
+
 export function evaluate(
-  expression: any,
+  expression: Ast | AstValue,
   environment = standardEnvironment(),
 ): any {
-  const mode = new ScopeStack<Mode>("evaluate")
-  function _evaluate(
-    expression: any,
+  const mode = new Scope("evaluate")
+
+  function evaluate(
+    expression: Ast | AstValue,
     environment = standardEnvironment(),
   ): any {
+    DEBUG && console.info("_evaluate", toJson(expression))
     switch (mode.current) {
       case "evaluate": {
+        if (expression === null) {
+          return null
+        }
+
         if (typeof expression === "string") {
           if (expression[0] === ",") {
-            return _evaluate(expression.slice(1, -1), environment)
+            return evaluate(expression.slice(1, -1), environment)
           }
           if (!(expression in environment)) {
-            console.error("Variable is undefined", expression)
-            throw `Variable ${expression} is undefined.`
+            throw new UndefinedVariableError(expression)
           }
           return environment[expression]
         }
+
         if (typeof expression === "number") {
           return expression
         }
-        const [keyword, ...rest] = expression
+
+        const [_keyword, _rest] = destructure(expression, 2)
+        const keyword = _keyword.value
+
         switch (keyword) {
           case "define": {
-            const [varName, expr] = rest
-            environment[varName] = _evaluate(expr, environment)
+            const [_name, _body] = destructure(_rest, 2)
+            if (typeof _name.value !== "string") {
+              throw new InvalidArgumentError(
+                "Name in 'define' must be a string.",
+              )
+            }
+            environment[_name.value] = evaluate(_body.value, environment)
             return
           }
           case "fn": {
-            const [params, body] = rest
-            return (...args: any[]) => {
+            const [_params, _body] = destructure(_rest, 2)
+            const params = _params.value
+            if (!isCons(params)) {
+              throw new InvalidExpressionError(
+                "Parameters for 'fn' must be a list.",
+              )
+            }
+            return (args: Cons) => {
+              const destructedArgs = destructure(args)
               const localEnv: Environment = { ...environment }
-              params.forEach((param: string, index: number) => {
-                localEnv[param] = args[index]
+              forEach(params, (_param, index) => {
+                if (typeof _param.value !== "string") {
+                  throw new InvalidArgumentError(
+                    "Parameter names must be strings.",
+                  )
+                }
+                localEnv[_param.value] = destructedArgs[index].value
               })
-              return _evaluate(body, localEnv)
+              return evaluate(_body.value, localEnv)
             }
           }
           case "if": {
-            const [conditional, success, fallthrough] = rest
-            if (_evaluate(conditional, environment)) {
-              return _evaluate(success, environment)
+            const [_conditional, _success, _fallthrough] = destructure(_rest, 3)
+            if (evaluate(_conditional.value, environment)) {
+              return evaluate(_success.value, environment)
             } else {
-              return _evaluate(fallthrough, environment)
+              return evaluate(_fallthrough.value, environment)
             }
           }
           case "let":
           case "let*": {
-            const [params, body] = rest
-            const scopedEnvironment = {
-              ...environment,
+            const [_params, _body] = destructure(_rest, 2)
+            if (!isCons(_params.value)) {
+              throw new InvalidExpressionError(
+                "Bindings for 'let' or 'let*' must be a list.",
+              )
             }
-            params.forEach((param) => {
-              const [name, value] = param
-              scopedEnvironment[name] = _evaluate(
-                value,
+            const scopedEnvironment = { ...environment }
+            forEach(_params.value, (_param) => {
+              if (!isCons(_param.value)) {
+                throw new InvalidExpressionError("Each binding must be a list.")
+              }
+              const [_name, _value] = destructure(_param.value)
+              if (typeof _name.value !== "string") {
+                throw new InvalidArgumentError("Binding names must be strings.")
+              }
+              scopedEnvironment[_name.value] = evaluate(
+                _value.value,
                 keyword === "let" ? environment : scopedEnvironment,
               )
             })
-            return _evaluate(body, scopedEnvironment)
+            return evaluate(_body.value, scopedEnvironment)
           }
-          case "unquote":
+          case "quote":
+            return _rest.value
           case "quasiquote":
-          case "quote": {
-            const [value] = rest
-            return mode.scope(keyword, () => _evaluate(value, environment))
-          }
+            return mode.scope(keyword, () => evaluate(_rest.value, environment))
           default: {
-            const [...args] = rest
-            const proc = _evaluate(keyword, environment)
-            const evaluatedArgs = args.map((arg) => _evaluate(arg, environment))
+            const proc = evaluate(keyword, environment)
+            const args = map(_rest, (_arg) => evaluate(_arg.value, environment))
             if (typeof proc !== "function") {
-              console.error(`proc is not a function`, proc, expression)
-              return
+              throw new InvalidFunctionError(proc, expression)
             }
-            return proc(...evaluatedArgs)
+            return proc(args)
           }
         }
       }
       case "quasiquote": {
-        if (Array.isArray(expression)) {
-          return expression.map((item) => {
-            if (Array.isArray(item) && item[0] === "unquote") {
-              return mode.scope("evaluate", () =>
-                _evaluate(item[1], environment),
-              )
-            } else {
-              return _evaluate(item, environment) // Recursively handle nested lists
-            }
+        if (isCons(expression)) {
+          const [_keyword, _body] = destructure(expression)
+          if (_keyword.value === "unquote") {
+            return mode.scope("evaluate", () => {
+              return evaluate(_body.value, environment)
+            })
+          }
+          return map(expression, (_value) => {
+            return evaluate(_value.value, environment)
           })
-        } else {
-          return expression
         }
-      }
-      case "quote": {
         return expression
       }
     }
   }
-  return _evaluate(expression, environment)
+
+  return evaluate(expression, environment)
 }
