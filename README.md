@@ -4,9 +4,14 @@
 
 toy lisp interpreter.
 
-## Sponsors
+## Repl
 
-[![sponsors](https://sponsors-images.bigmistqke.dev/sponsors.svg)](https://github.com/sponsors/bigmistqke)
+
+
+https://github.com/user-attachments/assets/75bfcea2-3ddb-4fa5-94c7-cec0663637c4
+
+
+
 
 ## License
 
