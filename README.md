@@ -19,7 +19,7 @@ interpret("(+ 1 2)")
 // Add custom environment
 const environment = createStandardEnvironment()
 environment.add("uppercase", (arg: Cons) => { return arg.value.value.toUppercase() })
-interpret("(+ 1 2)", environment)
+interpret("(uppercase bigmistqke)", environment)
 
 // Chain multiple lines with shared environment
 interpret
