@@ -4,7 +4,7 @@ Toy lisp interpreter.
 
 Support for:
 - `define` 👉 `(define big 69)`
-- `fn` 👉 `(fn add (a b) (+ a b))`
+- `fn` 👉 `(fn (a b) (+ a b))`
 - `if` 👉 `(if (> x 0) (+ x 1) (- x 1))`
 - `let`/`let*` 👉 `(let ((big 69) (mistqke 420)) (add big mistqke))`
 - `quote`/`quasiquote`/`unquote` 👉 `'(1 2 3)` `(quasiquote (1 ,(+ 1 1), 3))` 
@@ -26,7 +26,8 @@ interpret("(uppercase bigmistqke)", environment)
 interpret
   .pipe("(define big 69)")
   .pipe("(define mistqke 420)")
-  .return("(+ big mistqke)")
+  .pipe("(define add (fn (a b) (+ a b)))")
+  .return("(add big mistqke)")
 
 // Parse and evaluate AST
 const ast = parse(tokenize("(+ 1 2)"))
